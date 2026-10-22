@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0c2a4a" />
+<title>20/10 · Gửi Thủy</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --c1:#38bdf8; --c2:#7dd3fc; --c3:#bae6fd;
+    --bg1:#0c2a4a; --bg2:#030b14;
+  }
+  html,body{ height:100%; }
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(circle at 50% 32%,var(--bg1),var(--bg2) 72%);
+    color:#fff; overflow:hidden;
+  }
+  #canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+  @keyframes breathe{ 0%,100%{ transform:scale(1) } 50%{ transform:scale(1.028) } }
+  #canvas.assembled{ animation:breathe 5.2s ease-in-out infinite; }
+  .vignette{ position:fixed; inset:0; pointer-events:none;
+    background:radial-gradient(circle at 50% 44%,transparent 34%,rgba(0,0,0,.5) 100%); }
+  .ui{ position:fixed; inset:0; display:flex; flex-direction:column;
+    justify-content:space-between; align-items:center;
+    padding:6vh 5vw; text-align:center; pointer-events:none; }
+  .eyebrow{ letter-spacing:.34em; text-transform:uppercase;
+    font-size:clamp(10px,1.6vw,13px); color:var(--c3); opacity:.9; }
+  h1{ font-size:clamp(30px,7vw,66px); font-weight:800; margin-top:12px;
+    text-shadow:0 6px 34px rgba(0,0,0,.45); letter-spacing:.5px; }
+  h1 .name{ color:var(--c3); }
+  .sub{ margin-top:12px; font-size:clamp(13px,2.4vw,18px); opacity:.82; font-style:italic; }
+  .card{ pointer-events:auto; max-width:640px; width:100%;
+    background:rgba(255,255,255,.08); backdrop-filter:blur(9px);
+    border:1px solid rgba(255,255,255,.18); border-radius:24px;
+    padding:26px 28px; box-shadow:0 24px 70px rgba(0,0,0,.4); }
+  .card p{ font-size:clamp(14px,2.35vw,18px); line-height:1.8; }
+  .card .sign{ margin-top:16px; font-size:clamp(12px,2vw,15px); opacity:.72; letter-spacing:.3px; }
+  .replay{ margin-top:18px; cursor:pointer; border:none; border-radius:999px;
+    padding:12px 24px; font-size:14px; font-weight:700; color:#20060f;
+    background:linear-gradient(135deg,var(--c3),var(--c1));
+    box-shadow:0 12px 34px rgba(0,0,0,.4);
+    transition:transform .15s ease, box-shadow .15s ease; }
+  .replay:hover{ transform:translateY(-2px) scale(1.03); box-shadow:0 16px 40px rgba(0,0,0,.5); }
+  .replay:active{ transform:scale(.97); }
+  .fade{ opacity:0; transform:translateY(16px);
+    transition:opacity 1.1s ease, transform 1.1s ease; }
+  .fade.show{ opacity:1; transform:none; }
+  @media (max-width:480px){ .card{ padding:22px 20px; border-radius:20px; } }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="vignette"></div>
+<div class="ui">
+  <div>
+    <div class="eyebrow fade" id="eyebrow">20 · 10 · Ngày Phụ nữ Việt Nam</div>
+    <h1 class="fade" id="title">Gửi <span class="name">Thủy</span></h1>
+    <div class="sub fade" id="sub">Cho dòng nước trong trẻo và bao dung</div>
+  </div>
+  <div class="card fade" id="card">
+    <p>Chúc Thủy — người con gái dịu như nước, mạnh mẽ như dòng sông. Mong em mãi trong trẻo và an yên, để rồi cứ chảy mãi về phía những điều tốt đẹp nhất đang chờ em ở phía trước.</p>
+    <div class="sign">Thân gửi Thủy · 20/10</div>
+    <button class="replay" id="replay">💗 Ghép lại trái tim</button>
+  </div>
+</div>
+<script>
+(function(){
+  var cv = document.getElementById('canvas');
+  var ctx = cv.getContext('2d');
+  var COLORS = ['#38bdf8','#7dd3fc','#bae6fd'];
+  var N = 430;
+  var W, H, DPR, cx, cy, baseScale;
+  var parts = [];
+  var start = 0, started = false;
+
+  function heartXY(t){
+    var x = 16 * Math.pow(Math.sin(t),3);
+    var y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+    return { x:x, y:-y };
+  }
+
+  function buildTargets(){
+    var STEP = 720, poly = [], i;
+    for (i=0;i<STEP;i++) poly.push(heartXY(i/STEP*Math.PI*2));
+    function inside(x,y){
+      var c = false;
+      for (var a=0,b=STEP-1; a<STEP; b=a++){
+        var pa = poly[a], pb = poly[b];
+        if (((pa.y>y)!==(pb.y>y)) && x < (pb.x-pa.x)*(y-pa.y)/(pb.y-pa.y)+pa.x) c = !c;
+      }
+      return c;
+    }
+    var area2 = 0;
+    for (i=0;i<STEP;i++){ var p1=poly[i], p2=poly[(i+1)%STEP]; area2 += p1.x*p2.y - p2.x*p1.y; }
+    var sp = Math.sqrt(Math.abs(area2)/2/N);
+    var minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+    for (i=0;i<STEP;i++){
+      minx=Math.min(minx,poly[i].x); maxx=Math.max(maxx,poly[i].x);
+      miny=Math.min(miny,poly[i].y); maxy=Math.max(maxy,poly[i].y);
+    }
+    var pts = [];
+    for (var y=miny+sp*0.5; y<maxy; y+=sp){
+      for (var x=minx+sp*0.5; x<maxx; x+=sp){
+        var jx = x + (Math.random()-0.5)*sp*0.4;
+        var jy = y + (Math.random()-0.5)*sp*0.4;
+        if (inside(jx,jy)) pts.push({ x:jx, y:jy, sp:sp });
+      }
+    }
+    return pts;
+  }
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.width = Math.floor(window.innerWidth * DPR);
+    H = cv.height = Math.floor(window.innerHeight * DPR);
+    cv.style.width = window.innerWidth + 'px';
+    cv.style.height = window.innerHeight + 'px';
+    cx = W/2;
+    cy = H*0.44;
+    baseScale = Math.min(W,H)/40;
+  }
+
+  function init(){
+    resize();
+    var targets = buildTargets();
+    parts = targets.map(function(p,i){
+      return {
+        tx:p.x, ty:p.y,
+        size:p.sp*baseScale*(1.42 + Math.random()*0.3)*DPR,
+        color:COLORS[i%COLORS.length],
+        delay:Math.random()*1400,
+        dur:1500 + Math.random()*900,
+        sx:Math.random()*W,
+        sy:Math.random()*H,
+        seed:Math.random()*Math.PI*2,
+        rot:(Math.random()*2-1)*0.4
+      };
+    });
+    if (!started){ start = performance.now(); started = true; }
+  }
+
+  function drawHeart(s,color,glow){
+    ctx.beginPath();
+    ctx.moveTo(0, s*0.32);
+    ctx.bezierCurveTo(0, s*0.08, -s*0.5, -s*0.12, -s*0.5, -s*0.42);
+    ctx.bezierCurveTo(-s*0.5, -s*0.78, -s*0.22, -s*0.88, 0, -s*0.55);
+    ctx.bezierCurveTo(s*0.22, -s*0.88, s*0.5, -s*0.78, s*0.5, -s*0.42);
+    ctx.bezierCurveTo(s*0.5, -s*0.12, 0, s*0.08, 0, s*0.32);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    if (glow){ ctx.shadowColor = color; ctx.shadowBlur = s*0.7; } else { ctx.shadowBlur = 0; }
+    ctx.fill();
+  }
+
+  function loop(now){
+    var t = now - start;
+    ctx.clearRect(0,0,W,H);
+    var beat = 1 + 0.028*Math.sin(t/650);
+    var allDone = true;
+
+    for (var i=0;i<parts.length;i++){
+      var p = parts[i];
+      var prog = (t - p.delay)/p.dur;
+      if (prog < 0) prog = 0;
+      if (prog > 1) prog = 1;
+      if (prog < 1) allDone = false;
+      var e = 1 - Math.pow(1-prog,3);
+
+      var tX = cx + p.tx*baseScale*beat;
+      var tY = cy + p.ty*baseScale*beat;
+      var fx = Math.sin(t/950 + p.seed) * 12 * (1-e);
+      var fy = Math.cos(t/1150 + p.seed) * 12 * (1-e);
+      var x = p.sx + (tX - p.sx)*e + fx;
+      var y = p.sy + (tY - p.sy)*e + fy;
+
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.75*e;
+      ctx.translate(x,y);
+      ctx.rotate(p.rot * Math.sin(t/1300 + p.seed) * 0.6 * (1-e));
+      drawHeart(p.size, p.color, e > 0.72);
+      ctx.restore();
+    }
+    return allDone;
+  }
+
+  var rafId = 0, intervalId = 0, running = false;
+  function stopDrivers(){
+    running = false;
+    if (rafId){ cancelAnimationFrame(rafId); rafId = 0; }
+    if (intervalId){ clearInterval(intervalId); intervalId = 0; }
+    cv.classList.add('assembled');
+  }
+  function tick(){
+    if (!running) return;
+    if (loop(performance.now())){ stopDrivers(); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+  function startDrivers(){
+    cv.classList.remove('assembled');
+    if (running) return;
+    running = true;
+    rafId = requestAnimationFrame(tick);
+    intervalId = setInterval(function(){
+      if (running && loop(performance.now())) stopDrivers();
+    }, 200);
+  }
+
+  function revealUI(){
+    var show = function(id, ms){
+      setTimeout(function(){ var el=document.getElementById(id); if(el) el.classList.add('show'); }, ms);
+    };
+    show('eyebrow', 250);
+    show('title', 550);
+    show('sub', 900);
+    show('card', 3300);
+  }
+
+  document.getElementById('replay').addEventListener('click', function(){
+    for (var i=0;i<parts.length;i++){
+      parts[i].sx = Math.random()*W;
+      parts[i].sy = Math.random()*H;
+      parts[i].delay = Math.random()*1400;
+    }
+    start = performance.now();
+    startDrivers();
+  });
+
+  window.addEventListener('resize', function(){ init(); startDrivers(); });
+
+  init();
+  revealUI();
+  startDrivers();
+})();
+</script>
+</body>
+</html>
